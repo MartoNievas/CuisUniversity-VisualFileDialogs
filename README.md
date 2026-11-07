@@ -3,10 +3,12 @@
 Morphic file dialogs for importing and exporting Smalltalk code in CuisUniversity.
 The interface follows the active Cuis theme.
 
+This is the first release of the project (v1.0).
+
 ## Packages
 
-- **VisualFileDialogs 1.6** — File In and File Out dialogs.
-- **VisualFileDialogsTests 1.2** — 43 SUnit regression tests.
+- **VisualFileDialogs** — File In and File Out dialogs.
+- **VisualFileDialogsTests** — 43 SUnit regression tests.
 
 Requires Cuis with Morphic, SUnit and a VM providing `primitiveGetenv`.
 Goodies is not required.
