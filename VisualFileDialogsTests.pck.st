@@ -1,7 +1,7 @@
 'From Cuis7.9 [latest update: #8166] on 7 November 2026 at 12:00:00 pm'!
 'Description Regression tests for VisualFileDialogs; filesystem fixtures and persistence are isolated from user state.'!
 !provides: 'VisualFileDialogsTests' 1 2!
-!requires: 'VisualFileDialogs' 1 6 nil!
+!requires: 'VisualFileDialogs' 1 7 nil!
 SystemOrganization addCategory: #VisualFileDialogsTests!
 
 !classDefinition: #VisualFileDialogsTestImportModel category: #VisualFileDialogsTests!
@@ -541,4 +541,85 @@ testRecoveryFailureRetainsBackupAndReportsItsPath
  self assert: backups first textContents = 'original'.
  self assert: fixture children size = 1.
  self assert: failing class rememberedDirectoryPath isNil.
+! !
+
+!VisualFileDialogsTest methodsFor: 'tests' stamp: 'VFDTests 7/Nov/2026 12:00:00'!
+testPortableNamesAreValidatedForFilesAndFolders
+ #('bad?' 'bad*' 'bad<' 'bad>' 'bad"' 'bad|' 'bad.' 'bad ' 'CON' 'nul.st' 'COM1.st' 'LPT9') do: [:name |
+ self deny: (output isValidFileName: name).
+ self should: [output writeFileNamed: name] raise: Error.
+ "Folder input is trimmed before validation."
+ name = 'bad ' ifFalse: [self should: [output createDirectoryNamed: name] raise: Error]].
+ self deny: (output isValidFileName: ('bad', (String with: Character null), '.st')).
+ self assert: (output isValidFileName: 'Código válido.st').
+ self assert: fixture children isEmpty.
+! !
+
+!classDefinition: #VisualFileDialogsTestLinkedImportModel category: #VisualFileDialogsTests!
+VisualFileDialogsTestImportModel subclass: #VisualFileDialogsTestLinkedImportModel
+ instanceVariableNames: 'linkedEntry'
+ classVariableNames: ''
+ poolDictionaries: ''
+ category: 'VisualFileDialogsTests'!
+!VisualFileDialogsTestLinkedImportModel methodsFor: 'testing' stamp: 'VFDTests 7/Nov/2026 12:00:00'!
+linkedEntry: entry
+ linkedEntry := entry
+! !
+!VisualFileDialogsTestLinkedImportModel methodsFor: 'navigation' stamp: 'VFDTests 7/Nov/2026 12:00:00'!
+isSymbolicLink: entry
+ entry = linkedEntry ifTrue: [ ^ true ].
+ ^ super isSymbolicLink: entry
+! !
+
+!classDefinition: #VisualFileDialogsTestLinkedExportModel category: #VisualFileDialogsTests!
+VisualFileDialogsTestExportModel subclass: #VisualFileDialogsTestLinkedExportModel
+ instanceVariableNames: 'linkedEntry'
+ classVariableNames: ''
+ poolDictionaries: ''
+ category: 'VisualFileDialogsTests'!
+!VisualFileDialogsTestLinkedExportModel methodsFor: 'testing' stamp: 'VFDTests 7/Nov/2026 12:00:00'!
+linkedEntry: entry
+ linkedEntry := entry
+! !
+!VisualFileDialogsTestLinkedExportModel methodsFor: 'navigation' stamp: 'VFDTests 7/Nov/2026 12:00:00'!
+isSymbolicLink: entry
+ entry = linkedEntry ifTrue: [ ^ true ].
+ ^ super isSymbolicLink: entry
+! !
+
+!VisualFileDialogsTest methodsFor: 'tests' stamp: 'VFDTests 7/Nov/2026 12:00:00'!
+testLinkedDirectoryAndDescendantsCannotBeNavigatedTo
+ | linked folder |
+ folder := self folder: 'Linked'.
+ (folder / 'Child') assureExistence.
+ linked := VisualFileDialogsTestLinkedImportModel new.
+ linked goHome; navigateTo: fixture; linkedEntry: folder.
+ linked navigateTo: folder.
+ self assert: linked directory = fixture.
+ linked navigateTo: folder / 'Child'.
+ self assert: linked directory = fixture.
+ linked navigateTo: fixture.
+ self deny: (linked fileList includes: 'Linked /').
+ self deny: ((VisualFileDialogsDirectoryWrapper with: fixture name: fixture name model: linked)
+ contents anySatisfy: [:each | each withoutListWrapper = folder]).
+! !
+!VisualFileDialogsTest methodsFor: 'tests' stamp: 'VFDTests 7/Nov/2026 12:00:00'!
+testLinkedSourceCannotBeImported
+ | linked file |
+ file := self writeSource: 'linked.st' contents: 'Smalltalk at: #VisualFileDialogsTestMarker put: 42!!'.
+ linked := VisualFileDialogsTestLinkedImportModel new.
+ linked goHome; navigateTo: fixture; linkedEntry: file.
+ self should: [linked importFileNamed: file name] raise: Error.
+ self assert: (Smalltalk at: #VisualFileDialogsTestMarker ifAbsent: [nil]) = savedMarker.
+! !
+!VisualFileDialogsTest methodsFor: 'tests' stamp: 'VFDTests 7/Nov/2026 12:00:00'!
+testLinkedExportDestinationIsRejected
+ | linked |
+ self writeSource: 'linked.st' contents: 'original'.
+ linked := VisualFileDialogsTestLinkedExportModel new.
+ linked goHome; navigateTo: fixture;
+ suggestedName: 'linked.st' writer: [:stream | self fail];
+ linkedEntry: fixture // 'linked.st'.
+ self should: [linked writeFileNamed: 'linked.st'] raise: Error.
+ self assert: (fixture // 'linked.st') textContents = 'original'.
 ! !

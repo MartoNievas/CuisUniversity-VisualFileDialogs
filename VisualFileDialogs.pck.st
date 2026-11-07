@@ -1,6 +1,6 @@
 'From Cuis7.9 [latest update: #8166] on 7 November 2026 at 12:00:00 pm'!
 'Description Morphic File Out and File In dialogs. Original File Out remains available.'!
-!provides: 'VisualFileDialogs' 1 6!
+!provides: 'VisualFileDialogs' 1 7!
 SystemOrganization addCategory: #VisualFileDialogs!
 
 !classDefinition: #VisualFileDialogModel category: #VisualFileDialogs!
@@ -130,16 +130,25 @@ showHidden
 
 !VisualFileDialogModel methodsFor: 'validation' stamp: 'VFO 7/Nov/2026, 3:00:00 pm (UTC)'!
 fileNamed: name
- (self isValidFileName: name) ifFalse: [self error: 'Enter a valid file name without a path.'].
+ (self isValidFileName: name) ifFalse: [self error: 'Enter a file name supported by the operating system, without a path.'].
  (self allowsDirectory: directory) ifFalse: [self error: 'Choose a folder inside your home directory.'].
  ^ directory // name
 ! !
 
 !VisualFileDialogModel methodsFor: 'validation' stamp: 'VFO 7/Nov/2026, 3:00:00 pm (UTC)'!
 isValidFileName: name
+ | base |
  name isEmpty ifTrue: [ ^ false ].
  (#('.' '..') includes: name) ifTrue: [ ^ false ].
- ^ name noneSatisfy: [ :character | '/\:' includes: character ]
+ (name last = $. or: [name last = Character space]) ifTrue: [ ^ false ].
+ (name anySatisfy: [:character |
+ character codePoint < 32 or: ['/\:<>"|?*' includes: character]]) ifTrue: [ ^ false ].
+ base := (name copyUpTo: $.) asUppercase.
+ (#('CON' 'PRN' 'AUX' 'NUL') includes: base) ifTrue: [ ^ false ].
+ (base size = 4 and: [
+ (#('COM' 'LPT') includes: (base copyFrom: 1 to: 3))
+ and: ['123456789' includes: base last]]) ifTrue: [ ^ false ].
+ ^ true
 ! !
 
 
@@ -255,10 +264,8 @@ writeOn: stream
 createDirectoryNamed: proposedName
  | name destination |
  name := proposedName withBlanksTrimmed.
- (self isValidFileName: name) ifFalse: [self error: 'Enter a folder name without a path.'].
+ (self isValidFileName: name) ifFalse: [self error: 'Enter a folder name supported by the operating system, without a path.'].
  (name beginsWith: '.') ifTrue: [self error: 'Hidden folders cannot be created in this explorer.'].
- ((name anySatisfy: [:character | '<>"|?*' includes: character]) or: [name last = $.])
- ifTrue: [self error: 'Enter a folder name supported by the operating system.'].
  (self allowsDirectory: directory) ifFalse: [self error: 'Choose a folder inside your home directory.'].
  directory invalidateChildren.
  (directory children anySatisfy: [:entry | entry name = name]) ifTrue: [self error: 'A file or folder with that name already exists.'].
@@ -288,29 +295,56 @@ unusedFileWithExtension: extension
 
 !VisualFileOutModel methodsFor: 'exporting' stamp: 'VFD 7/Nov/2026, 3:00:00 pm (UTC)'!
 writeFileNamed: name
- | destination temporary backup |
+ | destination temporary |
+ destination := self validatedDestinationNamed: name.
+ temporary := self unusedFileWithExtension: '.tmp'.
+ [self writeTemporaryFile: temporary.
+ self commitTemporaryFile: temporary to: destination.
+ self rememberDirectory]
+ ensure: [self deleteExportArtifact: temporary].
+ ^ destination
+! !
+
+!VisualFileOutModel methodsFor: 'exporting - private' stamp: 'VFD 7/Nov/2026 12:00:00'!
+validatedDestinationNamed: name
+ | destination |
  destination := self fileNamed: name.
  (directory / name) exists ifTrue: [self error: 'The destination is a folder. Choose a file name.'].
  (destination exists and: [self isSymbolicLink: destination]) ifTrue: [self error: 'Symbolic links cannot be overwritten.'].
- temporary := self unusedFileWithExtension: '.tmp'.
- [temporary writeStreamDo: [:stream |
+ ^ destination
+! !
+
+!VisualFileOutModel methodsFor: 'exporting - private' stamp: 'VFD 7/Nov/2026 12:00:00'!
+writeTemporaryFile: temporary
+ temporary writeStreamDo: [:stream |
  stream ifNil: [self error: 'Could not create the temporary export file.'].
- self writeOn: stream].
+ self writeOn: stream]
+! !
+
+!VisualFileOutModel methodsFor: 'exporting - private' stamp: 'VFD 7/Nov/2026 12:00:00'!
+commitTemporaryFile: temporary to: destination
+ | backup |
  destination exists ifTrue: [
  backup := self unusedFileWithExtension: '.bak'.
  self renameFile: destination to: backup].
  [self renameFile: temporary to: destination]
  on: Error do: [:commitError |
- backup ifNotNil: [
+ backup ifNotNil: [self restoreBackup: backup to: destination].
+ commitError pass].
+ backup ifNotNil: [self deleteExportArtifact: backup]
+! !
+
+!VisualFileOutModel methodsFor: 'exporting - private' stamp: 'VFD 7/Nov/2026 12:00:00'!
+restoreBackup: backup to: destination
  [self renameFile: backup to: destination]
  on: Error do: [:restoreError |
- self error: 'Export failed. The original file is preserved at ', backup pathName]].
- commitError pass].
- backup ifNotNil: [[backup delete] on: Error do: [:cleanupError | nil]].
- self rememberDirectory]
- ensure: [[temporary invalidate. temporary exists ifTrue: [temporary delete]]
- on: Error do: [:cleanupError | nil]].
- ^ destination
+ self error: 'Export failed. The original file is preserved at ', backup pathName]
+! !
+
+!VisualFileOutModel methodsFor: 'exporting - private' stamp: 'VFD 7/Nov/2026 12:00:00'!
+deleteExportArtifact: file
+ [file invalidate. file exists ifTrue: [file delete]]
+ on: Error do: [:cleanupError | nil]
 ! !
 
 
@@ -829,11 +863,6 @@ visualFileOutMessage
  ^ VisualFileDialogs suggestedFileName: aClass name, '-', selector asFileName, '.st' writeStreamDo: [ :stream |
  stream writeSystemTimeStamp.
  aClass printMethodChunk: selector withPreamble: true on: stream moveSource: false toFile: 0 ]
-! !
-
-!WorldMorph methodsFor: '*VisualFileDialogs' stamp: 'VFD 7/Nov/2026 12:00:00'!
-menuNshortcutsSpecsDo: aBlock
- self worldMenuSpec do: aBlock
 ! !
 
 VisualFileDialogs initialize!
