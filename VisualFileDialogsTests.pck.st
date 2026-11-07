@@ -42,8 +42,8 @@ setUp
  savedDirectories := VisualFileDialogModel classPool at: #LastDirectories.
  savedDirectories ifNotNil: [savedDirectories := savedDirectories copy].
  savedMarker := Smalltalk at: #VisualFileDialogsTestMarker ifAbsent: [nil].
- wasEnabled := VisualFileOut isEnabled.
- VisualFileOut enable.
+ wasEnabled := VisualFileDialogs isEnabled.
+ VisualFileDialogs enable.
  fixture := (DirectoryEntry currentDirectory / 'build' / 'test-fixtures') assureExistence / ('VisualFileDialogsTests-', Time millisecondClockValue asString, '-', 1000000 atRandom asString).
  fixture exists ifTrue: [self error: 'Test fixture already exists'].
  fixture assureExistence.
@@ -60,7 +60,7 @@ tearDown
  VisualFileDialogModel classPool at: #LastDirectories put: savedDirectories.
  savedMarker ifNil: [Smalltalk removeKey: #VisualFileDialogsTestMarker ifAbsent: []]
  ifNotNil: [Smalltalk at: #VisualFileDialogsTestMarker put: savedMarker].
- wasEnabled = false ifTrue: [VisualFileOut disable].
+ wasEnabled = false ifTrue: [VisualFileDialogs disable].
  super tearDown].
 ! !
 
@@ -128,7 +128,7 @@ testHiddenFoldersAreFilteredFromBothViews
  output navigateTo: fixture.
  self deny: (output fileList includes: '.hidden /').
  self assert: (output fileList includes: 'Visible /').
- wrapper := VisualFileOutDirectoryWrapper with: fixture name: fixture name model: output.
+ wrapper := VisualFileDialogsDirectoryWrapper with: fixture name: fixture name model: output.
  self assert: (wrapper contents collect: [:each | each asString]) = #('Visible').
 ! !
 
@@ -194,12 +194,14 @@ testCreatingFolderDoesNotRememberExportLocation
 testImportListFiltersUnsupportedFilesAndPackages
  self writeSource: 'code.st' contents: ''.
  self writeSource: 'changes.cs' contents: ''.
+ self writeSource: 'Parser-SourceDelta-SyntaxError-Fix.cs.st' contents: ''.
  self writeSource: 'package.pck.st' contents: ''.
  self writeSource: 'notes.txt' contents: ''.
  self folder: 'Folder'.
  input navigateTo: fixture.
  self assert: (input fileList includes: 'code.st').
  self assert: (input fileList includes: 'changes.cs').
+ self assert: (input fileList includes: 'Parser-SourceDelta-SyntaxError-Fix.cs.st').
  self assert: (input fileList includes: 'Folder /').
  self deny: (input fileList includes: 'package.pck.st').
  self deny: (input fileList includes: 'notes.txt').
@@ -327,9 +329,10 @@ testImportWindowLoadsSelectedFileAndCloses
 !VisualFileDialogsTest methodsFor: 'tests' stamp: 'VFDTests 7/Nov/2026 12:00:00'!
 testWorldMenuHasFileInWithoutKeyboardShortcut
  | spec |
- spec := VisualFileOut worldMenuOptions first.
+ spec := VisualFileDialogs worldMenuOptions first.
  self assert: (spec at: #label) = 'File In with Explorer'.
  self assert: (spec at: #selector) = #openFileIn.
+ self assert: (TheWorldMenu new buildWorldMenu items anySatisfy: [:item | item contents = 'File In with Explorer']).
  self deny: (WorldMorph new allMenuNshortcutsSpecs values anySatisfy: [:each | each size >= 5 and: [each fifth = #openFileIn]]).
 ! !
 
@@ -337,17 +340,18 @@ testWorldMenuHasFileInWithoutKeyboardShortcut
 testBrowserMenusContainOnlyExportAndPreserveInheritance
  | spec |
  #(systemCatListMenuSpec systemCatSingletonMenuSpec classListMenuSpec messageCatListMenuSpec messageListMenuSpec) do: [:key |
- spec := VisualFileOut perform: key.
+ spec := VisualFileDialogs perform: key.
  self assert: spec size = 1.
- self assert: spec first third = $O].
+ self assert: spec first third = $O.
+ self assert: (Browser canUnderstand: spec first fifth)].
  spec := BrowserWindow new messageListMenuSpec detect: [:each | each first = 130].
  self assert: spec third = $i.
 ! !
 
 !VisualFileDialogsTest methodsFor: 'tests' stamp: 'VFDTests 7/Nov/2026 12:00:00'!
 testDisabledPackageHidesWorldEntry
- VisualFileOut disable.
- self assert: VisualFileOut worldMenuOptions isEmpty.
+ VisualFileDialogs disable.
+ self assert: VisualFileDialogs worldMenuOptions isEmpty.
 ! !
 
 !VisualFileDialogsTest methodsFor: 'tests' stamp: 'VFDTests 7/Nov/2026 12:00:00'!
@@ -356,11 +360,11 @@ testHomeResolutionUsesPlatformEnvironment
  environment := Dictionary new.
  environment at: 'HOME' put: '/custom/Home Folder'; at: 'USERPROFILE' put: 'D:\Profiles\User'; at: 'HOMEDRIVE' put: 'E:'; at: 'HOMEPATH' put: '\Homes\User'.
  lookup := [:key | environment at: key ifAbsent: [nil]].
- #('Linux' 'Mac OS') do: [:platform | self assert: (VisualFileOut homePathFor: platform environment: lookup) = '/custom/Home Folder'].
- self assert: (VisualFileOut homePathFor: 'Win32' environment: lookup) = 'D:\Profiles\User'.
+ #('Linux' 'Mac OS') do: [:platform | self assert: (VisualFileDialogs homePathFor: platform environment: lookup) = '/custom/Home Folder'].
+ self assert: (VisualFileDialogs homePathFor: 'Win32' environment: lookup) = 'D:\Profiles\User'.
  environment removeKey: 'USERPROFILE'.
- self assert: (VisualFileOut homePathFor: 'Win32' environment: lookup) = 'E:\Homes\User'.
- self assert: (VisualFileOut homePathFor: 'Win32' environment: [:key | nil]) isNil.
+ self assert: (VisualFileDialogs homePathFor: 'Win32' environment: lookup) = 'E:\Homes\User'.
+ self assert: (VisualFileDialogs homePathFor: 'Win32' environment: [:key | nil]) isNil.
 ! !
 
 !VisualFileDialogsTest methodsFor: 'tests' stamp: 'VFDTests 7/Nov/2026 12:00:00'!
