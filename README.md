@@ -8,7 +8,7 @@ This is the first release of the project (v1.0).
 ## Packages
 
 - **VisualFileDialogs** — File In and File Out dialogs.
-- **VisualFileDialogsTests** — 47 SUnit regression tests.
+- **VisualFileDialogsTests** — 42 SUnit regression tests.
 
 Requires Cuis with Morphic, SUnit and a VM providing `primitiveGetenv`.
 Goodies is not required.
@@ -52,8 +52,10 @@ suite run
 
 Alternatively select `VisualFileDialogsTest` in the Browser and choose **Run Tests**.
 Run the suite serially with the project directory inside your home folder.
+Tests group input variants of the same rule and report the failing scenario.
+Write, commit and recovery failures are tested independently.
 
-All 47 tests passed on Linux with CuisUniversity 7.9-8309 and Cuis 7.9-8257.
+All 42 tests passed on Linux with CuisUniversity 7.9-8309 and Cuis 7.9-8257.
 Native macOS and Windows validation is still pending.
 The suite uses test doubles for symbolic-link rejection; directory and source-file
 links were also checked on Linux. Dangling links are not reliably detected by the
