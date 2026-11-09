@@ -238,10 +238,97 @@ rememberedDirectories
 
 !classDefinition: #VisualFileInModel category: #VisualFileDialogs!
 VisualFileDialogModel subclass: #VisualFileInModel
-	instanceVariableNames: ''
+	instanceVariableNames: 'selectedIndices'
 	classVariableNames: ''
 	poolDictionaries: ''
 	category: 'VisualFileDialogs'!
+
+!VisualFileInModel methodsFor: 'initialization' stamp: 'VFD 8/Nov/2026 12:00:00'!
+initialize
+
+	selectedIndices := Set new.
+	super initialize
+! !
+
+!VisualFileInModel methodsFor: 'navigation' stamp: 'VFD 8/Nov/2026 12:00:00'!
+directory: aDirectory
+
+	(self allowsDirectory: aDirectory) ifFalse: [^ self].
+	selectedIndices removeAll.
+	^ super directory: aDirectory
+! !
+
+!VisualFileInModel methodsFor: 'updating' stamp: 'VFD 8/Nov/2026 12:00:00'!
+updateFileList
+	"FileList refreshes automatically. Preserve selected entries, not their old positions."
+
+	| entries |
+	entries := self selectedEntries.
+	selectedIndices removeAll.
+	super updateFileList.
+	self restoreSelectionFrom: entries.
+	self selectionChanged
+! !
+
+!VisualFileInModel methodsFor: 'selection' stamp: 'VFD 8/Nov/2026 12:00:00'!
+fileListIndex: anIndex
+	"Keep keyboard navigation and the primary selection compatible with the multiple list."
+
+	super fileListIndex: anIndex.
+	anIndex > 0 ifTrue: [self fileListSelectionAt: anIndex put: true]
+! !
+
+!VisualFileInModel methodsFor: 'selection' stamp: 'VFD 8/Nov/2026 12:00:00'!
+fileListSelectionAt: anIndex
+
+	^ selectedIndices includes: anIndex
+! !
+
+!VisualFileInModel methodsFor: 'selection' stamp: 'VFD 8/Nov/2026 12:00:00'!
+fileListSelectionAt: anIndex put: aBoolean
+	"Called by PluggableListMorphOfMany for clicks and each row crossed while dragging."
+
+	(self includesListIndex: anIndex) ifFalse: [^ self].
+	(self fileListSelectionAt: anIndex) = aBoolean ifTrue: [^ self].
+	aBoolean
+		ifTrue: [selectedIndices add: anIndex]
+		ifFalse: [selectedIndices remove: anIndex].
+	self selectionChanged
+! !
+
+!VisualFileInModel methodsFor: 'selection' stamp: 'VFD 8/Nov/2026 12:00:00'!
+selectedSourceFiles
+
+	^ self selectedEntries reject: [:entry | entry isDirectoryEntry]
+! !
+
+!VisualFileInModel methodsFor: 'selection - private' stamp: 'VFD 8/Nov/2026 12:00:00'!
+selectedEntries
+
+	list ifNil: [^ #()].
+	^ selectedIndices asArray sorted collect: [:index | list at: index]
+! !
+
+!VisualFileInModel methodsFor: 'selection - private' stamp: 'VFD 8/Nov/2026 12:00:00'!
+restoreSelectionFrom: entries
+
+	selectedIndices := (entries
+		collect: [:entry | list indexOf: entry]
+		thenSelect: [:index | index > 0]) asSet
+! !
+
+!VisualFileInModel methodsFor: 'selection - private' stamp: 'VFD 8/Nov/2026 12:00:00'!
+includesListIndex: anIndex
+
+	^ list notNil and: [anIndex between: 1 and: list size]
+! !
+
+!VisualFileInModel methodsFor: 'selection - private' stamp: 'VFD 8/Nov/2026 12:00:00'!
+selectionChanged
+
+	self changed: #allSelections.
+	self triggerEvent: #chooseName with: ''
+! !
 
 !VisualFileInModel methodsFor: 'file list' stamp: 'VFO 7/Nov/2026, 3:00:00 pm (UTC)'!
 listForSelectingPatterns: selecting rejectingPatterns: rejecting
@@ -274,17 +361,17 @@ importFileNamed: name
 !VisualFileInModel methodsFor: 'importing' stamp: 'VFO 7/Nov/2026, 3:00:00 pm (UTC)'!
 importSelectedFile
 
-	| file |
-	file := self selectedSourceFile.
-	file ifNil: [self error: 'Select a source file from the list.'].
-	self importFileNamed: file name
+	| files |
+	files := self selectedSourceFiles.
+	files isEmpty ifTrue: [self error: 'Select a source file from the list.'].
+	files do: [:file | self importFileNamed: file name]
 ! !
 
 
-!VisualFileInModel methodsFor: 'accessing' stamp: 'VFO 7/Nov/2026, 3:00:00 pm (UTC)'!
+!VisualFileInModel methodsFor: 'selection' stamp: 'VFO 7/Nov/2026, 3:00:00 pm (UTC)'!
 selectedSourceFile
 
-	(listIndex isNil or: [listIndex = 0 or: [listIndex > list size]]) ifTrue: [ ^ nil ].
+	(listIndex isNil or: [(self includesListIndex: listIndex) not]) ifTrue: [^ nil].
 	(list at: listIndex) isDirectoryEntry ifTrue: [ ^ nil ].
 	^ list at: listIndex
 ! !
@@ -428,7 +515,8 @@ buildExplorer
 	row := LinearLayoutMorph newRow.
 	files := self morphicFileListPane.
 	files menuNshortcutsKey: nil; doubleClickSelector: #enterSelectedDirectory.
-	files setBalloonText: 'Double-click to open a folder. Click a file to use its name.'.
+	files allowsMultipleSelection ifFalse: [
+		files setBalloonText: 'Double-click to open a folder. Click a file to use its name.'].
 	tree := self morphicDirectoryTreePane.
 	tree menuNshortcutsKey: nil.
 	row addMorph: (self paneTitled: 'Folders' containing: tree) proportionalWidth: 0.32;
@@ -560,6 +648,21 @@ VisualFileDialogWindow subclass: #VisualFileInWindow
 	poolDictionaries: ''
 	category: 'VisualFileDialogs'!
 
+!VisualFileInWindow methodsFor: 'GUI building' stamp: 'VFD 8/Nov/2026 12:00:00'!
+morphicFileListPane
+
+	^ (PluggableListMorphOfMany
+		withModel: model
+		listGetter: #fileList
+		primarySelectionGetter: #fileListIndex
+		primarySelectionSetter: #fileListIndex:
+		listSelectionGetter: #fileListSelectionAt:
+		listSelectionSetter: #fileListSelectionAt:put:)
+		menuNshortcutsKey: #fileListMenuSpec;
+		setBalloonText: 'Click to mark or unmark files. Drag to select several. Double-click a folder to open it.';
+		yourself
+! !
+
 !VisualFileInWindow methodsFor: 'GUI building' stamp: 'VFO 7/Nov/2026, 3:00:00 pm (UTC)'!
 buildActions
 
@@ -569,7 +672,7 @@ buildActions
 	hint := LabelMorph contents: 'Smalltalk source (.st, .cs)'.
 	cancel := self buttonLabel: 'Cancel' target: self action: #delete.
 	open := self buttonLabel: 'File In' target: self action: #importFile.
-	open borderWidth: 2; setBalloonText: 'Load the selected source file into this image'.
+	open borderWidth: 2; setBalloonText: 'Load the selected source files in list order into this image'.
 	row addMorph: hint proportionalWidth: 1;
 		addMorph: cancel fixedWidth: (self buttonWidthFor: 'Cancel');
 		addMorph: open fixedWidth: (self buttonWidthFor: 'File In').
@@ -584,7 +687,7 @@ buildHeader
 	header separation: 4; axisEdgeWeight: #columnTop.
 	title := LabelMorph contents: 'Import Code'.
 	title emphasis: AbstractFont boldCode.
-	subtitle := LabelMorph contents: 'Choose a Smalltalk source file to load into this image.'.
+	subtitle := LabelMorph contents: 'Choose one or more Smalltalk source files to load into this image.'.
 	header addMorphKeepMorphHeight: title; addMorphKeepMorphHeight: subtitle.
 	^ header
 ! !
@@ -596,7 +699,7 @@ buildSelectionPane
 	pane := LinearLayoutMorph newColumn.
 	pane gap: 6; padding: 8; borderWidth: 1; borderColor: self widgetsColor;
 		color: self textBackgroundColor.
-	heading := LabelMorph contents: 'Selected file'.
+	heading := LabelMorph contents: 'Selected files'.
 	heading emphasis: AbstractFont boldCode.
 	selectionLabel := LabelMorph contents: self selectionText.
 	pane addMorphKeepMorphHeight: heading; addMorphUseAll: selectionLabel.
@@ -629,7 +732,11 @@ relabel
 !VisualFileInWindow methodsFor: 'updating' stamp: 'VFO 7/Nov/2026, 3:00:00 pm (UTC)'!
 selectionText
 
-	^ model selectedSourceFile ifNil: ['Select a source file from the list.'] ifNotNil: [:file | file name]
+	| files |
+	files := model selectedSourceFiles.
+	files isEmpty ifTrue: [^ 'Select source files from the list.'].
+	files size = 1 ifTrue: [^ files first name].
+	^ files size asString, ' files selected'
 ! !
 
 

@@ -826,3 +826,132 @@ test42InitialExtentMeetsMinimumSizeAndListFontHeight
 	self assert: extent x >= 820.
 	self assert: extent y >= ((Preferences at: #standardListFont) lineSpacing * 24).
 ! !
+
+!VisualFileDialogsTest methodsFor: 'tests - multiple selection' stamp: 'VFDTests 8/Nov/2026 12:00:00'!
+test43MultipleSelectionCanBeUnmarked
+
+	self writeSource: 'a.st' contents: ''.
+	self writeSource: 'b.st' contents: ''.
+	input navigateTo: fixture.
+	self select: 'a.st' in: input.
+	self select: 'b.st' in: input.
+	self assert: input selectedSourceFiles size = 2.
+	input fileListSelectionAt: (input fileList indexOf: 'a.st') put: false.
+	self assert: (input selectedSourceFiles collect: [:file | file name]) = #('b.st').
+	input fileListSelectionAt: (input fileList indexOf: 'b.st') put: false.
+	self assert: input selectedSourceFiles isEmpty.
+	self should: [input importSelectedFile] raise: Error.
+! !
+
+!VisualFileDialogsTest methodsFor: 'tests - multiple import' stamp: 'VFDTests 8/Nov/2026 12:00:00'!
+test44MultipleImportUsesListOrderAndSkipsFolders
+
+	self writeSource: 'a.st' contents: 'Smalltalk at: #VisualFileDialogsTestMarker put: 10!!'.
+	self writeSource: 'b.st' contents: 'Smalltalk at: #VisualFileDialogsTestMarker put: (Smalltalk at: #VisualFileDialogsTestMarker) + 1!!'.
+	self folder: 'Child'.
+	input navigateTo: fixture.
+	self select: 'b.st' in: input.
+	self select: 'Child /' in: input.
+	self select: 'a.st' in: input.
+	input importSelectedFile.
+	self assert: (Smalltalk at: #VisualFileDialogsTestMarker) = 11.
+! !
+
+!VisualFileDialogsTest methodsFor: 'tests - selection refresh' stamp: 'VFDTests 8/Nov/2026 12:00:00'!
+test45AutomaticRefreshPreservesSelectionAndNavigationClearsIt
+
+	self writeSource: 'a.st' contents: ''.
+	self writeSource: 'b.st' contents: ''.
+	input navigateTo: fixture.
+	self select: 'a.st' in: input.
+	self select: 'b.st' in: input.
+	input stepAt: Time millisecondClockValue.
+	self assert: input selectedSourceFiles size = 2.
+	self assert: (input fileListSelectionAt: (input fileList indexOf: 'a.st')).
+	self assert: (input fileListSelectionAt: (input fileList indexOf: 'b.st')).
+	input navigateTo: (self folder: 'Child').
+	self assert: input selectedSourceFiles isEmpty.
+! !
+
+!VisualFileDialogsTest methodsFor: 'tests - multiple import' stamp: 'VFDTests 8/Nov/2026 12:00:00'!
+test46MultipleImportStopsAfterFirstFailure
+
+	self writeSource: 'a.st' contents: 'Smalltalk at: #VisualFileDialogsTestMarker put: 10!!'.
+	self writeSource: 'b.st' contents: 'Error signal: ''Simulated import failure''!!'.
+	self writeSource: 'c.st' contents: 'Smalltalk at: #VisualFileDialogsTestMarker put: 99!!'.
+	input navigateTo: fixture.
+	self select: 'a.st' in: input.
+	self select: 'b.st' in: input.
+	self select: 'c.st' in: input.
+	self should: [input importSelectedFile] raise: Error.
+	self assert: (Smalltalk at: #VisualFileDialogsTestMarker) = 10.
+! !
+
+!VisualFileDialogsTest methodsFor: 'tests - window selection' stamp: 'VFDTests 8/Nov/2026 12:00:00'!
+test47ImportWindowUsesMultipleListAndShowsSelectionCount
+
+	| window pane |
+	self writeSource: 'a.st' contents: ''.
+	self writeSource: 'b.st' contents: ''.
+	input navigateTo: fixture.
+	window := self openWindow: VisualFileInWindow model: input.
+	pane := window morphicFileListPane.
+	self assert: pane allowsMultipleSelection.
+	pane delete.
+	self select: 'a.st' in: input.
+	self select: 'b.st' in: input.
+	self assert: window selectionText = '2 files selected'.
+	window importFile.
+	self assert: window owner isNil.
+! !
+
+!VisualFileDialogsTest methodsFor: 'tests - selection refresh' stamp: 'VFDTests 8/Nov/2026 12:00:00'!
+test48RefreshPreservesFilesWhenTheirIndicesChange
+
+	| file |
+	self writeSource: 'b.st' contents: ''.
+	file := self writeSource: 'c.st' contents: ''.
+	input navigateTo: fixture.
+	self select: 'b.st' in: input.
+	self select: 'c.st' in: input.
+	self writeSource: 'a.st' contents: ''.
+	input stepAt: Time millisecondClockValue.
+	self assert: (input selectedSourceFiles collect: [:each | each name]) = #('b.st' 'c.st').
+	file delete.
+	input stepAt: Time millisecondClockValue.
+	self assert: (input selectedSourceFiles collect: [:each | each name]) = #('b.st').
+! !
+
+!VisualFileDialogsTest methodsFor: 'tests - multiple selection' stamp: 'VFDTests 8/Nov/2026 12:00:00'!
+test49SelectionUpdatesIgnoreInvalidIndicesAndRepeatedValues
+
+	| index changes |
+	self writeSource: 'a.st' contents: ''.
+	input navigateTo: fixture.
+	index := input fileList indexOf: 'a.st'.
+	changes := OrderedCollection new.
+	input when: #chooseName send: #add: to: changes.
+	input fileListSelectionAt: index put: true.
+	input fileListSelectionAt: index put: true.
+	input fileListSelectionAt: 0 put: true.
+	input fileListSelectionAt: input fileList size + 1 put: true.
+	self assert: changes size = 1.
+	self assert: input selectedSourceFiles size = 1.
+	input fileListSelectionAt: index put: false.
+	input fileListSelectionAt: index put: false.
+	self assert: changes size = 2.
+	self assert: input selectedSourceFiles isEmpty.
+! !
+
+!VisualFileDialogsTest methodsFor: 'tests - selection refresh' stamp: 'VFDTests 8/Nov/2026 12:00:00'!
+test50RefreshPreservesMarkedFolderWithoutImportingIt
+
+	self folder: 'Child'.
+	self writeSource: 'a.st' contents: ''.
+	input navigateTo: fixture.
+	self select: 'Child /' in: input.
+	self select: 'a.st' in: input.
+	input stepAt: Time millisecondClockValue.
+	self assert: (input fileListSelectionAt: (input fileList indexOf: 'Child /')).
+	self assert: (input selectedSourceFiles collect: [:entry | entry name]) = #('a.st').
+! !
